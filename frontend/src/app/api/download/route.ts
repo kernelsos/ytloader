@@ -7,10 +7,9 @@ import { rateLimit } from "../../../../lib/rateLimiter";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const DOWNLOAD_FOLDER    = path.join(os.homedir(), "Downloads");
-const TIMEOUT_MS         = 5 * 60 * 1000;  // Fix 1: kill process after 5 minutes
-const MAX_CONCURRENT     = 2;               // Fix 2: max simultaneous downloads
+const TIMEOUT_MS         = 5 * 60 * 1000;  
+const MAX_CONCURRENT     = 2;               
 
-// Fix 2: track active downloads in memory
 let activeDownloads = 0;
 
 export async function POST(req: NextRequest) {
@@ -94,7 +93,6 @@ export async function POST(req: NextRequest) {
           )
         );
       } else if (code === null) {
-        // Fix 1: process was killed by our timeout
         resolve(
           NextResponse.json(
             { error: "Download timed out after 5 minutes. Try a shorter video or lower quality." },
@@ -102,7 +100,6 @@ export async function POST(req: NextRequest) {
           )
         );
       } else {
-        // Fix 3: never send raw stderr (contains full server paths) to the browser
         console.error("[yt-downloader] stderr:", stderr.trim());
         resolve(
           NextResponse.json(
