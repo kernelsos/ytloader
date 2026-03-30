@@ -1,18 +1,9 @@
-"""
-YouTube Video Downloader using yt-dlp
-Install dependency: pip install yt-dlp
-
-Can be used standalone OR called by the Next.js API route:
-  python main.py --url <URL> --quality 720p --folder ./downloads
-"""
-
 import sys
 import yt_dlp
 import os
 import argparse
 
-# Force UTF-8 output so video titles with non-ASCII characters
-# (Chinese, Japanese, Arabic, etc.) don't crash on Windows
+
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
@@ -34,12 +25,10 @@ def download_youtube_video(url: str, output_folder: str = ".", quality: str = "b
                           "audio_only" → MP3 audio only
     """
 
-    # Create output folder if it doesn't exist
+    
     os.makedirs(output_folder, exist_ok=True)
 
-    # Map quality labels to yt-dlp format strings.
-    # Each entry tries a pre-merged single-file format FIRST (no FFmpeg needed),
-    # then falls back to separate stream merging if FFmpeg IS available.
+    
     quality_map = {
         "best":       "bestvideo+bestaudio/best",
         "worst":      "worstvideo+worstaudio/worst",
@@ -61,7 +50,7 @@ def download_youtube_video(url: str, output_folder: str = ".", quality: str = "b
         "abort_on_error": False,
         "extractor_args": {
             "youtube": {
-                "js_runtimes": ["nodejs"]   # tells yt-dlp to use Node.js explicitly
+                "js_runtimes": ["nodejs"]   
             }
         },
         "postprocessors": (
@@ -94,8 +83,6 @@ def _progress_hook(d: dict):
     elif d["status"] == "finished":
         print(f"\n  Done: {d['filename']}")
 
-
-# ── CLI entry point (used by the Next.js API route) ─────────────────────────
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="YouTube Video Downloader")
     parser.add_argument("--url",     required=True,          help="YouTube video URL")
