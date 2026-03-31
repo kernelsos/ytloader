@@ -12,21 +12,19 @@ sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 app = FastAPI()
 
-# Allow your Vercel frontend to call this backend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[os.getenv("FRONTEND_URL", "*")],  # Set this in Render env vars
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-DOWNLOAD_FOLDER = "/tmp/downloads"  # Render allows writes to /tmp
+DOWNLOAD_FOLDER = "/tmp/downloads"
 
 class DownloadRequest(BaseModel):
     url: str
     quality: str = "720p"
-
 
 quality_map = {
     "best":       "bestvideo+bestaudio/best",
@@ -38,11 +36,9 @@ quality_map = {
     "audio_only": "bestaudio/best",
 }
 
-
 @app.get("/")
 def health_check():
     return {"status": "ok"}
-
 
 @app.post("/download")
 def download_video(req: DownloadRequest):
