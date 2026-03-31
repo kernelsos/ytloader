@@ -1,4 +1,7 @@
-fastapi
-uvicorn[standard]
-yt-dlp
-pydantic
+fastapi==0.116.2
+uvicorn==0.37.0
+yt-dlp==2026.3.17
+pydantic==2.11.9
+pydantic-extra-types==2.10.5
+pydantic-settings==2.11.0
+pydantic_core==2.33.2
