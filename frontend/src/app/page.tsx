@@ -28,32 +28,46 @@ export default function HomePage() {
   }, [theme]);
 
   const handleDownload = async () => {
-    if (!url.trim()) {
-      setStatus({ type: "error", message: "Please enter a YouTube URL." });
+    if(!url.trim()) {
+      setStatus({ type: "error", message: "Please enter a Youtube URL"});
+      return;
+    }
+    setStatus({type:"loading"});
+
+    try {
+    const res = await fetch("/api/download", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url, quality }),
+    });
+
+    // If not OK, parse as JSON error
+    if (!res.ok) {
+      const data = await res.json();
+      setStatus({ type: "error", message: data.error ?? "Download failed." });
       return;
     }
 
-    setStatus({ type: "loading" });
+    // Parse as blob and trigger browser download
+    const blob = await res.blob();
+    const disposition = res.headers.get("content-disposition") ?? "";
+    const match = disposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+    const filename = match?.[1]?.replace(/['"]/g, "") ?? "video.mp4";
 
-    try {
-      const res = await fetch("/api/download", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url, quality }), 
-      });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        setStatus({ type: "error", message: data.error ?? "Download failed." });
-      } else {
-        setStatus({ type: "success", message: data.message ?? "Download started successfully!" });
-        setUrl("");
-      }
-    } catch {
-      setStatus({ type: "error", message: "Could not reach the server. Is the backend running?" });
-    }
-  };
+    setStatus({ type: "success", message: "Download started! Check your browser downloads." });
+    setUrl("");
+  } catch {
+    setStatus({ type: "error", message: "Could not reach the server. Please try again." });
+  }
+};
 
   return (
     <div className="page-wrapper">

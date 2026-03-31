@@ -1,15 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { spawn } from "child_process";
-import path from "path";
-import os from "os";
 import { rateLimit } from "../../../../lib/rateLimiter";
 
+const RENDER_BACKEND_URL = process.env.RENDER_BACKEND_URL; // Set this on Vercel
 
-// ── Config ────────────────────────────────────────────────────────────────────
-const DOWNLOAD_FOLDER    = path.join(os.homedir(), "Downloads");
-const TIMEOUT_MS         = 5 * 60 * 1000;  
-const MAX_CONCURRENT     = 2;               
-
+const MAX_CONCURRENT = 2;
 let activeDownloads = 0;
 
 export async function POST(req: NextRequest) {
@@ -21,10 +15,9 @@ export async function POST(req: NextRequest) {
 
   // ── 2. Rate limit check ───────────────────────────────────────────────────
   const { allowed, remaining, retryAfterSeconds } = rateLimit(ip);
-
   if (!allowed) {
     return NextResponse.json(
-      { error: `Too many requests. Please wait ${retryAfterSeconds} seconds before trying again.` },
+      { error: `Too many requests. Please wait ${retryAfterSeconds} seconds.` },
       { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } }
     );
   }
@@ -32,7 +25,7 @@ export async function POST(req: NextRequest) {
   // ── 3. Concurrency check ──────────────────────────────────────────────────
   if (activeDownloads >= MAX_CONCURRENT) {
     return NextResponse.json(
-      { error: "Server is busy with other downloads. Please try again in a moment." },
+      { error: "Server is busy. Please try again in a moment." },
       { status: 503 }
     );
   }
@@ -57,67 +50,45 @@ export async function POST(req: NextRequest) {
   const ALLOWED_QUALITIES = ["best", "worst", "1080p", "720p", "480p", "360p", "audio_only"];
   const safeQuality = ALLOWED_QUALITIES.includes(quality) ? quality : "720p";
 
-  // ── 5. Spawn Python script ────────────────────────────────────────────────
-  const scriptPath = path.join(process.cwd(), "..","backend", "main.py");
+  // ── 5. Call Render backend & proxy the file back ──────────────────────────
   activeDownloads++;
 
-  return new Promise<NextResponse>((resolve) => {
-    const proc = spawn("python", [
-      scriptPath,
-      "--url",     url,
-      "--quality", safeQuality,
-      "--folder",  DOWNLOAD_FOLDER,
-    ]);
-
-    let stderr = "";
-    proc.stdout.on("data", () => {});   // drain stdout so buffer doesn't block
-    proc.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
-
-    // Fix 1: Kill process if it exceeds the timeout
-    const timer = setTimeout(() => {
-      proc.kill("SIGTERM");
-    }, TIMEOUT_MS);
-
-    const cleanup = () => {
-      clearTimeout(timer);
-      activeDownloads = Math.max(0, activeDownloads - 1);
-    };
-
-    proc.on("close", (code) => {
-      cleanup();
-      if (code === 0) {
-        resolve(
-          NextResponse.json(
-            { message: "Download completed successfully!", remainingRequests: remaining },
-            { headers: { "X-RateLimit-Remaining": String(remaining) } }
-          )
-        );
-      } else if (code === null) {
-        resolve(
-          NextResponse.json(
-            { error: "Download timed out after 5 minutes. Try a shorter video or lower quality." },
-            { status: 504 }
-          )
-        );
-      } else {
-        console.error("[yt-downloader] stderr:", stderr.trim());
-        resolve(
-          NextResponse.json(
-            { error: "Download failed. The video may be unavailable or restricted." },
-            { status: 500 }
-          )
-        );
-      }
+  try {
+    const backendRes = await fetch(`${RENDER_BACKEND_URL}/download`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url, quality: safeQuality }),
     });
 
-    proc.on("error", () => {
-      cleanup();
-      resolve(
-        NextResponse.json(
-          { error: "Could not start Python. Make sure Python is installed and accessible." },
-          { status: 500 }
-        )
+    if (!backendRes.ok) {
+      const err = await backendRes.json().catch(() => ({}));
+      return NextResponse.json(
+        { error: err.detail ?? "Download failed on the backend." },
+        { status: backendRes.status }
       );
+    }
+
+    // Extract filename from Content-Disposition header
+    const disposition = backendRes.headers.get("content-disposition") ?? "";
+    const match = disposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+    const filename = match?.[1]?.replace(/['"]/g, "") ?? "video.mp4";
+
+    const fileBuffer = await backendRes.arrayBuffer();
+
+    return new NextResponse(fileBuffer, {
+      status: 200,
+      headers: {
+        "Content-Type": backendRes.headers.get("content-type") ?? "application/octet-stream",
+        "Content-Disposition": `attachment; filename="${filename}"`,
+        "X-RateLimit-Remaining": String(remaining),
+      },
     });
-  });
+  } catch {
+    return NextResponse.json(
+      { error: "Could not reach the download server. Please try again later." },
+      { status: 502 }
+    );
+  } finally {
+    activeDownloads = Math.max(0, activeDownloads - 1);
+  }
 }
